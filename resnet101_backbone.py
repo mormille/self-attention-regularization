@@ -15,38 +15,25 @@ from torchvision import datasets, models, transforms
 import math
 
 
-class DETRdemo(nn.Module):
-    """
-    Demo DETR implementation.
-
-    Demo implementation of DETR in minimal number of lines, with the
-    following differences wrt DETR in the paper:
-    * learned positional encoding (instead of sine)
-    * positional encoding is passed at input (instead of attention)
-    * fc bbox predictor (instead of MLP)
-    The model achieves ~40 AP on COCO val5k and runs at ~28 FPS on Tesla V100.
-    Only batch size 1 supported.
-    """
+class resnet101_backbone(nn.Module):
     def __init__(self, num_classes, hidden_dim=256, nheads=8,
                  num_encoder_layers=6, num_decoder_layers=6):
         super().__init__()
 
-        # create ResNet-50 backbone
-        self.backbone = resnet50()
+        # create ResNet-101 backbone
+        self.backbone = resnet101()
+        del self.backbone.layer4
+        del self.backbone.avgpool
         del self.backbone.fc
-
         # create conversion layer
-        self.conv = nn.Conv2d(2048, hidden_dim, 1)
+        self.conv = nn.Conv2d(1024, hidden_dim, 1)
 
-        # create a default PyTorch transformer
-        self.transformer = nn.Transformer(
-            hidden_dim, nheads, num_encoder_layers, num_decoder_layers)
+        self.encoder_layer = nn.TransformerEncoderLayer(hidden_dim, nhead=8)
+        self.encoder = nn.TransformerEncoder(self.encoder_layer, num_encoder_layers)
+
 
         # prediction heads, one extra class for predicting non-empty slots
         # note that in baseline DETR linear_bbox layer is 3-layer MLP
-        self.linear_class = nn.Linear(hidden_dim, num_classes + 1)
-        self.linear_bbox = nn.Linear(hidden_dim, 4)
-
         # output positional encodings (object queries)
         self.query_pos = nn.Parameter(torch.rand(100, hidden_dim))
 
@@ -69,9 +56,8 @@ class DETRdemo(nn.Module):
         x = self.backbone.layer1(x)
         x = self.backbone.layer2(x)
         x = self.backbone.layer3(x)
-        x = self.backbone.layer4(x)
 
-        # convert from 2048 to 256 feature planes for the transformer
+        # convert from 1024 to 256 feature planes for the transformer
         h = self.conv(x)
 
         # construct positional encodings
@@ -81,29 +67,23 @@ class DETRdemo(nn.Module):
             self.row_embed[:H].unsqueeze(1).repeat(1, W, 1),
         ], dim=-1).flatten(0, 1).unsqueeze(1)
 
-        # propagate through the transformer
-        h = self.transformer(pos + 0.1 * h.flatten(2).permute(2, 0, 1),
+        # propagate through the encoder
+        h = self.encoder(pos + 0.1 * h.flatten(2).permute(2, 0, 1),
                              self.query_pos.unsqueeze(1)).transpose(0, 1)
         
-        #print(h.shape)
-        #preparing the outputs
-        #f_map = conv_features[0]
-        #shape = f_map.shape[-2:]
-        #sattn = attn_weights[0][1][0].reshape(shape + shape)
-        
-        # finally project transformer outputs to class labels and bounding boxes
         return h
 
 
 
 class ClassifierHead(nn.Module):
 
-    def __init__(self,model, encoder, conv, query_pos, col_embed, row_embed, size, num_classes):
+    def __init__(self,model, query_pos, col_embed, row_embed, size, num_classes):
         super().__init__()
-        self.backbone = model
-        self.conv = conv
-        self.encoder = encoder
+        self.backbone = model.backbone
+        self.conv = model.conv
+        self.encoder = model.encoder
         self.size = math.ceil(size/32)
+        #self.size = 13
 
         self.conv_features, self.attn_weights, self.enc_output = [], [], []
         #def enc_hook(module, input, output):
@@ -122,12 +102,12 @@ class ClassifierHead(nn.Module):
         self.col_embed = col_embed
         self.row_embed = row_embed
 
-        self.backbone.layer4.register_forward_hook(conv_hook)
+        self.backbone.layer3.register_forward_hook(conv_hook)
         self.encoder.layers[-1].self_attn.register_forward_hook(attn_hook)
         #self.encoder.norm.register_forward_hook(enc_hook)
 
         self.classification_head = nn.Sequential()
-        self.classification_head.fc1 = nn.Linear((self.size*self.size+2048)*self.size*self.size, 2048)
+        self.classification_head.fc1 = nn.Linear(201617, 2048)
         self.classification_head.dropout1 = nn.Dropout(0.5)
         self.classification_head.fc2 = nn.Linear(2048, 1024)
         self.classification_head.dropout2 = nn.Dropout(0.5)
@@ -143,7 +123,7 @@ class ClassifierHead(nn.Module):
         x = self.backbone.layer1(x)
         x = self.backbone.layer2(x)
         x = self.backbone.layer3(x)
-        x = self.backbone.layer4(x) 
+        #x = self.backbone.layer4(x) 
         #print(x.shape)
 
         h = self.conv(x)
@@ -163,7 +143,9 @@ class ClassifierHead(nn.Module):
             #print(h.shape)
             #preparing the outputs
         f_map = self.conv_features[0]
+        print(f_map.shape)
         shape = f_map.shape[-2:]
+        print(shape)
         sattn = self.attn_weights[0][1][0].reshape(shape + shape)
 
         shape2 = f_map.shape[-1:]
@@ -178,8 +160,9 @@ class ClassifierHead(nn.Module):
         #print(h.shape)
         #implementar if dependendo da architecture
         #x = h.reshape(-1, 169*256)
-        #print(self.size)
-        x = f_map.view(-1, (self.size*self.size+2048)*self.size*self.size)
+        print(self.size)
+        print(f_map.shape)
+        x = f_map.view(-1, 201617)#(self.size*self.size+2048)*self.size*self.size)
         x = F.relu(self.classification_head.fc1(x))
         x = F.relu(self.classification_head.dropout1(x))
         x = F.relu(self.classification_head.fc2(x))
