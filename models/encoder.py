@@ -56,9 +56,11 @@ class EncoderModule(nn.Module):
         mask = mask.flatten(1)
 
         #tgt = torch.zeros_like(query_embed)
-        memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
+        memory, sattn = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
+        #sattn = memory[1]
+        #memory = memory[0]
 
-        return memory.permute(1, 2, 0).view(bs, c, h, w)
+        return memory.permute(1, 2, 0).view(bs, c, h, w), sattn#.permute(0,3,4,1,2)
 
 
 class TransformerEncoder(nn.Module):
@@ -74,15 +76,16 @@ class TransformerEncoder(nn.Module):
                 src_key_padding_mask: Optional[Tensor] = None,
                 pos: Optional[Tensor] = None):
         output = src
+        #print("Output", len(output))
 
         for layer in self.layers:
-            output = layer(output, src_mask=mask,
+            output, sattn = layer(output, src_mask=mask,
                            src_key_padding_mask=src_key_padding_mask, pos=pos)
 
         if self.norm is not None:
             output = self.norm(output)
 
-        return output
+        return output, sattn
 
 
 
@@ -118,13 +121,17 @@ class TransformerEncoderLayer(nn.Module):
         #print(q.shape)
         #print(k.shape)
         src2 = self.self_attn(q, k, value=src, attn_mask=src_mask,
-                              key_padding_mask=src_key_padding_mask)[0]
+                              key_padding_mask=src_key_padding_mask)
+        sattn = src2[1]
+        #print(sattn.shape)
+        src2 = src2[0]
+
         src = src + self.dropout1(src2)
         src = self.norm1(src)
         src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
         src = src + self.dropout2(src2)
         src = self.norm2(src)
-        return src
+        return src, sattn
 
     def forward_pre(self, src,
                     src_mask: Optional[Tensor] = None,
@@ -133,7 +140,11 @@ class TransformerEncoderLayer(nn.Module):
         src2 = self.norm1(src)
         q = k = self.with_pos_embed(src2, pos)
         src2 = self.self_attn(q, k, value=src2, attn_mask=src_mask,
-                              key_padding_mask=src_key_padding_mask)[0]
+                              key_padding_mask=src_key_padding_mask)
+        
+        sattn = src2[1]
+        print(sattn.shape)
+        src2 = src2[0]
         src = src + self.dropout1(src2)
         src2 = self.norm2(src)
         src2 = self.linear2(self.dropout(self.activation(self.linear1(src2))))
