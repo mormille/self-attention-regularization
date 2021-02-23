@@ -12,6 +12,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 class EncoderModule(nn.Module):
 
@@ -121,7 +123,7 @@ class TransformerEncoderLayer(nn.Module):
         #print(q.shape)
         #print(k.shape)
         src2 = self.self_attn(q, k, value=src, attn_mask=src_mask,
-                              key_padding_mask=src_key_padding_mask)
+                              key_padding_mask=src_key_padding_mask.to(device))
         sattn = src2[1]
         #print(sattn.shape)
         src2 = src2[0]

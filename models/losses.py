@@ -13,6 +13,9 @@ from .encoder import EncoderModule
 from .backbone import Backbone, NoBackbone
 
 class Attention_penalty_factor(nn.Module):
+    def __init__(self, ):
+        super().__init__()
+
     def distance_matrix(batch_size, width, height, grid_l=3):
         
         w = width
@@ -90,8 +93,9 @@ class Attention_penalty_factor(nn.Module):
             ref_column = pf_matrix[i]
             p_matrix = grid_matrix.type(torch.FloatTensor)
             for j in range(1,len(ref_column)):
-                p_matrix[p_matrix==j]=ref_column[j]
-            p_matrix[p_matrix==0]=ref_column[0]
+                #print(float(j))
+                p_matrix[p_matrix==j]=float(ref_column[j])
+            p_matrix[p_matrix==0]=float(ref_column[0])
             penalty_mask.append(p_matrix)
 
         penalty_enc = []
@@ -132,23 +136,29 @@ class Attention_penalty_factor(nn.Module):
         return mask
 
 class Curating_of_attention_loss(nn.Module):
-    def __init__(self, grid_l=3):
-        super(LCA, self).__init__()
-        self.grid_l = grid_l
+    def __init__(self, ):
+        super().__init__()
  
-    def forward(self, inputs):        
-        A = inputs
-        qt_hor_grids = A.shape[2]//grid_l
-        qt_ver_grids = A.shape[3]//grid_l
-        grid_temp = A.shape[2]*A.shape[3]//self.grid_l
-        temp = A.view(A.shape[0], A.shape[1], grid_temp, self.grid_l)
-        #print(temp.shape)
-        ind  = np.arange(grid_temp)
-        #print(ind.shape)
-        ind2 = ind.reshape(A.shape[2], grid_temp//A.shape[2]).T.reshape(grid_temp//grid_l, grid_l)
-        #print(ind2.shape)
-        grids = temp[:, :, ind2, :]
-        #print(B.shape)
+    def forward(self, pattn):
+        #Computing the Attention Loss
+        Latt = torch.sum(pattn)
 
-        
-        return grids
+        return Latt
+
+class Generator_loss(nn.Module):
+    def __init__(self, beta=1, sigma=10):
+        super().__init__()
+        self.beta = beta
+        self.sigma = sigma
+
+    def forward(self, pattn, outputs, target):
+        #Computing the Attention Loss
+        LCA = Curating_of_attention_loss()
+        Latt = LCA(pattn)
+
+        MSE = nn.MSELoss()
+        Lrec = MSE(outputs,target)
+
+        Lg = self.beta*Latt + self.sigma*Lrec
+
+        return Lg
