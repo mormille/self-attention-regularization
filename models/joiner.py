@@ -46,6 +46,7 @@ class Joiner(nn.Module):
 
         sattn = sattn.reshape(sattn.shape[:-2] + h.shape[-2:] + h.shape[-2:])
         sattn = sattn.permute(0,3,4,1,2)
+
         pattn = sattn*self.penalty_mask.to(device)
 
         x = torch.cat([h,att],1)
