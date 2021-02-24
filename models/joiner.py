@@ -10,7 +10,6 @@ from .backbone import Backbone, NoBackbone
 from .losses import Attention_penalty_factor
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-#device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 class Joiner(nn.Module):
     def __init__(self, backbone, encoder, num_classes = 10, batch_size=1, hidden_dim=512, image_h=200, image_w=200, grid_l=3, penalty_factor="1", alpha=1):
@@ -42,6 +41,7 @@ class Joiner(nn.Module):
         h, pos = self.backbone(inputs)
 
         att, sattn = self.encoder(src=h, pos_embed=pos.to(device))
+
         #print(att.shape)
 
         sattn = sattn.reshape(sattn.shape[:-2] + h.shape[-2:] + h.shape[-2:])
