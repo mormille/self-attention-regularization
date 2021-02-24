@@ -12,6 +12,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class EncoderModule(nn.Module):
 
@@ -56,7 +57,7 @@ class EncoderModule(nn.Module):
         mask = mask.flatten(1)
 
         #tgt = torch.zeros_like(query_embed)
-        memory, sattn = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
+        memory, sattn = self.encoder(src, src_key_padding_mask=mask.to(device), pos=pos_embed.to(device))
         #sattn = memory[1]
         #memory = memory[0]
 
@@ -80,7 +81,7 @@ class TransformerEncoder(nn.Module):
 
         for layer in self.layers:
             output, sattn = layer(output, src_mask=mask,
-                           src_key_padding_mask=src_key_padding_mask, pos=pos)
+                           src_key_padding_mask=src_key_padding_mask.to(device), pos=pos.to(device))
 
         if self.norm is not None:
             output = self.norm(output)
