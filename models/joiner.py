@@ -46,7 +46,6 @@ class Joiner(nn.Module):
 
         sattn = sattn.reshape(sattn.shape[:-2] + h.shape[-2:] + h.shape[-2:])
         sattn = sattn.permute(0,3,4,1,2)
-
         pattn = sattn*self.penalty_mask.to(device)
 
         x = torch.cat([h,att],1)
@@ -56,4 +55,4 @@ class Joiner(nn.Module):
         #x = F.relu(self.fc2(x))
         #x = F.relu(self.fc3(x))
         x = self.fc1(x)
-        return x, att, sattn, h, pos, pattn
+        return x, pattn
