@@ -6,32 +6,95 @@ import os
 import copy
 import torchvision.transforms as T
 import torch
-#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-data_transforms = {
-    'train': T.Compose([
-    T.Resize((400,400)),
-    T.ToTensor(),
-    T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-  ]),
-    'val': T.Compose([
-    T.Resize((400,400)),
-    T.ToTensor(),
-    T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-  ]),
-}
+from PIL import Image
+import requests
 
-data_dir = 'self_supervised_exemplar/'
-image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
-                                          data_transforms[x])
-                  for x in ['train', 'val']}
-dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=1,
-                                             shuffle=True, num_workers=4)
-              for x in ['train', 'val']}
-dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
-class_names = image_datasets['train'].classes
+import matplotlib.pyplot as plt
+import numpy as np
+import torch.nn.functional as F
+from torch import nn
 
-def train_model(model, criterion, optimizer, scheduler, device, num_epochs=25):
+from .models.backbone import Backbone
+from .models.encoder import EncoderModule
+from .models.joiner import Joiner
+from .models.losses import Attention_penalty_factor, Generator_loss
+from .models.unet import UNet
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+def data_transform(H,W, normalize:bool=True):
+    if normalize == True:
+        transform = T.Compose([
+        T.Resize((H,W)),
+        T.ToTensor(),
+        T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+        return transform
+    else:
+        transform = T.Compose([
+        T.Resize((H,W)),
+        T.ToTensor()
+        ])
+        return transform
+
+
+
+def train_model(model, inputs, labels, opt_d):
+    # Clear discriminator gradients
+    opt_d.zero_grad()
+
+    
+    real_inputs = inputs.to(device) # allow gpu use
+    labels = labels.to(device) # allow gpu use
+    # Pass real images through discriminator
+    real_preds, pattn = model(real_inputs)
+    #real_targets = torch.ones(real_images.size(0), 1, device=device)
+    real_loss = model_criterion(real_preds, labels)
+    real_score = torch.mean(real_preds).item()
+    
+    _, preds_real = torch.max(outputs, 1)
+    running_real_corrects = torch.sum(preds_real == labels.data)
+    
+    # Generate fake images
+    noised_inputs = generator(real_inputs)
+
+    # Pass fake images through discriminator
+    noised_preds, noised_pattn = model(noised_inputs)
+    noised_loss = model_criterion(noised_preds, labels)
+    noised_score = torch.mean(noised_preds).item()
+    
+    _, preds_noised = torch.max(outputs, 1)
+    running_noised_corrects = torch.sum(preds_noised == labels.data)
+
+    # Update discriminator weights
+    loss = real_loss + noised_loss
+    loss.backward()
+    opt_d.step()
+    return loss.item(), real_score, noised_score, running_real_corrects, running_noised_correct
+
+def train_generator(inputs, labels, opt_g):
+    # Clear generator gradients
+    opt_g.zero_grad()
+    
+    real_inputs = inputs.to(device) # allow gpu use
+    labels = labels.to(device) # allow gpu use
+    
+    # Generate fake images
+    noised_inputs = generator(real_inputs)
+    
+    # Try to fool the discriminator
+    preds, pattn = model(noised_inputs)
+    model_loss = model_criterion(preds, labels)
+    loss = gen_criterion(pattn, noised_inputs, real_inputs, model_loss)
+    
+    # Update generator weights
+    loss.backward()
+    opt_g.step()
+    
+    return loss.item()
+
+def fit(model, generator, criterion, optimizer, scheduler, device, num_epochs=25):
     since = time.time()
 
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -78,6 +141,7 @@ def train_model(model, criterion, optimizer, scheduler, device, num_epochs=25):
                 running_corrects += torch.sum(preds == labels.data)
             if phase == 'train':
                 scheduler.step()
+                
 
             epoch_loss = running_loss / dataset_sizes[phase]
             epoch_acc = running_corrects.double() / dataset_sizes[phase]
