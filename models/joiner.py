@@ -39,8 +39,9 @@ class Joiner(nn.Module):
     def forward(self, inputs):
 
         h, pos = self.backbone(inputs)
-        pos = pos.to(device)
-        att, sattn = self.encoder(src=h, pos_embed=pos)
+
+        att, sattn = self.encoder(src=h, pos_embed=pos.to(device))
+
         #print(att.shape)
 
         sattn = sattn.reshape(sattn.shape[:-2] + h.shape[-2:] + h.shape[-2:])
@@ -54,4 +55,4 @@ class Joiner(nn.Module):
         #x = F.relu(self.fc2(x))
         #x = F.relu(self.fc3(x))
         x = self.fc1(x)
-        return x, att, sattn, h, pos, pattn
+        return x, pattn

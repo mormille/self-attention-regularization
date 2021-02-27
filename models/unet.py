@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class DoubleConv(nn.Module):
     """(convolution => [BN] => ReLU) * 2"""
@@ -93,6 +94,7 @@ class UNet(nn.Module):
         self.up3 = Up(256, 128 // factor, bilinear)
         self.up4 = Up(128, 64, bilinear)
         self.outc = OutConv(64, n_classes)
+        #self.fc1 = nn.Linear(n_classes*180*180, 10)
 
     def forward(self, x):
         x0 = x
@@ -106,5 +108,8 @@ class UNet(nn.Module):
         x = self.up3(x, x2)
         x = self.up4(x, x1)
         noise = self.outc(x)
+        
+        #x = noise.reshape(-1, 3*180*180)
+        #x = self.fc1(x)
         noised_image = noise + x0
         return noised_image

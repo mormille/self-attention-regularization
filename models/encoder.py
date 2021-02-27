@@ -122,7 +122,7 @@ class TransformerEncoderLayer(nn.Module):
         #print(q.shape)
         #print(k.shape)
         src2 = self.self_attn(q, k, value=src, attn_mask=src_mask,
-                              key_padding_mask=src_key_padding_mask)
+                              key_padding_mask=src_key_padding_mask.to(device))
         sattn = src2[1]
         #print(sattn.shape)
         src2 = src2[0]

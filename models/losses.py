@@ -93,8 +93,9 @@ class Attention_penalty_factor(nn.Module):
             ref_column = pf_matrix[i]
             p_matrix = grid_matrix.type(torch.FloatTensor)
             for j in range(1,len(ref_column)):
-                p_matrix[p_matrix==j]=ref_column[j]
-            p_matrix[p_matrix==0]=ref_column[0]
+                #print(float(j))
+                p_matrix[p_matrix==j]=float(ref_column[j])
+            p_matrix[p_matrix==0]=float(ref_column[0])
             penalty_mask.append(p_matrix)
 
         penalty_enc = []
@@ -150,14 +151,14 @@ class Generator_loss(nn.Module):
         self.beta = beta
         self.sigma = sigma
 
-    def forward(self, pattn, noised_image, original_image):
+    def forward(self, pattn, noised, original_image, model_loss):
         #Computing the Attention Loss
         LCA = Curating_of_attention_loss()
         Latt = LCA(pattn)
 
         MSE = nn.MSELoss()
-        Lrec = MSE(noised_image,original_image)
+        Lrec = MSE(noised,original_image)
 
-        Lg = self.beta*Latt + self.sigma*Lrec
+        Lg = self.beta*Latt - model_loss + self.sigma*Lrec
 
         return Lg
