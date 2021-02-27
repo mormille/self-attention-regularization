@@ -146,9 +146,10 @@ class Curating_of_attention_loss(nn.Module):
         return Latt
 
 class Generator_loss(nn.Module):
-    def __init__(self, beta=1, sigma=10):
+    def __init__(self, beta=0.1, gamma=0.1,sigma=1.0):
         super().__init__()
         self.beta = beta
+        self.gamma = gamma
         self.sigma = sigma
 
     def forward(self, pattn, noised, original_image, model_loss):
@@ -159,6 +160,6 @@ class Generator_loss(nn.Module):
         MSE = nn.MSELoss()
         Lrec = MSE(noised,original_image)
 
-        Lg = self.beta*Latt - model_loss + self.sigma*Lrec
+        Lg = self.beta*Latt - self.gamma*model_loss + self.sigma*Lrec
 
         return Lg
