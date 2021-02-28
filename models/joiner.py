@@ -55,4 +55,4 @@ class Joiner(nn.Module):
         #x = F.relu(self.fc2(x))
         #x = F.relu(self.fc3(x))
         x = self.fc1(x)
-        return x, pattn
+        return x, sattn, pattn
