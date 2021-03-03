@@ -97,7 +97,7 @@ def train_generator(generator, model, inputs, labels, opt_g, gen_criterion, mode
     
     return loss.item()
 
-def fit(training_loader, validation_loader, model, generator, model_criterion, gen_criterion, model_optimizer, 
+def fit_adversarial(training_loader, validation_loader, model, generator, model_criterion, gen_criterion, model_optimizer, 
     gen_optimizer, model_lr_scheduler, generator_lr_scheduler, len_train, len_val, 
     path='test/TOP_PERFORMANCE_epoch_', epochs=25, start_idx=1):
     
