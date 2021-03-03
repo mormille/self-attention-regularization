@@ -226,5 +226,5 @@ def fit(training_loader, validation_loader, model, generator, model_criterion, g
     model.load_state_dict(best_model_wts)
     torch.save(model.state_dict(),path + str(epoch) + '.pth')
     
-    return loss_d, loss_g, real_corrects, noised_corrects, val_real_corrects, val_noised_corrects,train_real_attention_maps, train_adversarial_attention_maps, val_real_attention_maps, val_adversarial_attention_maps
+    return losses_d, losses_g, real_corrects, noised_corrects, val_real_corrects, val_noised_corrects,train_real_attention_maps, train_adversarial_attention_maps, val_real_attention_maps, val_adversarial_attention_maps
 
