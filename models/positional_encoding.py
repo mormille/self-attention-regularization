@@ -2,6 +2,8 @@ import math
 
 import torch
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 class PositionalEncodingSin():
     def positionalencoding2d(batch_size, d_model, height, width):
         """
