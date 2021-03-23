@@ -41,6 +41,23 @@ class Backbone(nn.Module):
         
         return h, pos
 
+class EmbeddingNetwork(nn.Module):
+    def __init__(self, hidden_dim=256):
+        super().__init__()
+        
+        self.hidden_dim = hidden_dim
+        # create ResNet-101 backbone
+        self.conv = nn.Conv2d(3, hidden_dim, 1)
+
+    def forward(self, inputs):
+
+        # convert from 3 to 256 feature planes for the transformer
+        h = self.conv(inputs)
+        shape = h.shape
+        pos = PositionalEncodingSin.positionalencoding2d(shape[0],self.hidden_dim,shape[2],shape[3])
+        
+        return h, pos
+
 class NoBackbone(nn.Module):
     def __init__(self, hidden_dim=512):
         super().__init__()

@@ -146,7 +146,7 @@ class Curating_of_attention_loss(nn.Module):
         return Latt
 
 class Generator_loss(nn.Module):
-    def __init__(self, beta=0.2, gamma=0.2,sigma=0.8):
+    def __init__(self, beta=0.00005, gamma=0.005,sigma=1):
         super().__init__()
         self.beta = beta
         self.gamma = gamma

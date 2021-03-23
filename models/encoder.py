@@ -12,11 +12,12 @@ import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 class EncoderModule(nn.Module):
 
-    def __init__(self, d_model=512, nhead=1, num_encoder_layers=6,
+    def __init__(self, d_model=256, nhead=1, num_encoder_layers=6,
                  dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False,
                  return_intermediate_dec=False):
