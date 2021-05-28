@@ -20,28 +20,72 @@ __all__ = ['Joiner', 'create_mask', 'penalty_mask', 'pos_emb', 'GAN']
 
 
 class GAN(nn.Module):
-    def __init__(self, n_channels=3, n_classes=3, bilinear=False, num_encoder_layers = 6, nhead=1, backbone = False, num_classes = 10, bypass=False, mask=None, pos_enc = "sin", batch_size=10, hidden_dim=256, image_h=32, image_w=32, grid_l=4, penalty_factor="1", alpha=1):
+    def __init__(self, n_channels=3, n_classes=3, bilinear=False, num_encoder_layers = 5, nhead=4, backbone = False, num_classes = 10, bypass=False, mask=None, pos_enc = "sin", batch_size=10, hidden_dim=256, image_h=32, image_w=32, grid_l=4, penalty_factor="1", alpha=1):
         super().__init__()
         self.generator = UNet(n_channels,n_classes,bilinear)
         self.model = Joiner(num_encoder_layers, nhead, backbone, num_classes, bypass, mask, pos_enc, batch_size, hidden_dim, image_h, image_w, grid_l, penalty_factor, alpha)
         self.noise_mode = True
         self.generator_mode = True
+        self.paramsToUpdate()
         
-    def switcher():
+    def generatorSwitcher(self):
+        if self.generator_mode == True:
+            self.generator_mode = False
+        else:
+            self.generator_mode = True
+        
+    def noiseSwitcher(self):
         if self.noise_mode == True:
             self.noise_mode = False
         else:
             self.noise_mode = True
         
+        
+    def assertParams(self):
+        if self.generator_mode == True:
+            for name, param in self.generator.named_parameters():
+                assert param.requires_grad == True
+            for name, param in self.model.named_parameters():
+                assert param.requires_grad == False
+        else:
+            for name, param in self.generator.named_parameters():
+                assert param.requires_grad == False
+            fb = ["mask","penalty_mask","pos"]
+            for name, p in self.model.named_parameters(): 
+                if name not in fb:
+                    p.requires_grad_(True)    
+    
+    
+    def paramsToUpdate(self):
+        if self.generator_mode == True:
+            for param in self.generator.parameters():
+                param.requires_grad = True
+            for param in self.model.parameters():
+                param.requires_grad = False
+        else:
+            for param in self.generator.parameters():
+                param.requires_grad = False
+            fb = ["mask","penalty_mask","pos"]
+            for name, p in self.model.named_parameters(): 
+                if name not in fb:
+                    p.requires_grad_(True)
+                    
+            self.assertParams()
+                    
+        
     def forward(self, inputs):
         
+        self.assertParams()
         input0 = inputs
         if self.noise_mode == True:
             inputs = self.generator(inputs)
             
         outputs, sattn, pattn = self.model(inputs)
         
-        return [outputs, sattn, pattn, input0, inputs]
+        if self.generator_mode == True:
+            return [outputs, input0, inputs, pattn]
+        else:
+            return [outputs, sattn, pattn]
         
         
 class Joiner(nn.Module):
@@ -81,47 +125,8 @@ class Joiner(nn.Module):
             self.row_embed = nn.Parameter(torch.rand(50, hidden_dim // 2))
             self.col_embed = nn.Parameter(torch.rand(50, hidden_dim // 2))
             
-            
-        self.noise_mode = True
-        self.switch = True
-        
-        
-    def noiseSwitcher(self):
-        if self.noise_mode == True:
-            self.noise_mode = False
-        else:
-            self.noise_mode = True
-        
-        
-    def assertParams(self):
-
-        fb = ["mask","penalty_mask","pos"]
-        for name, p in self.named_parameters(): 
-            if name not in fb:
-                assert p.requires_grad == True
-            else:
-                assert p.requires_grad == False
-                    
-        
-    def paramsToUpdate(self):
-
-        fb = ["mask","penalty_mask","pos"]
-        for name, p in self.named_parameters(): 
-            if name not in fb:
-                p.requires_grad_(True)
-            else:
-                p.requires_grad_(False)
-        self.assertParams()
-            
     def forward(self, inputs, mask=Optional[Tensor], pos=Optional[Tensor], penalty_mask=Optional[Tensor]):
         #print("Passing through the model")
-        
-        #print("Critic Forward")
-        
-        if len(inputs) == 2:
-            x0 = inputs[1]
-            inputs = inputs[0]
-        else: x0 = inputs
         
         penalty_mask = self.penalty_mask
         mask = self.mask
@@ -176,7 +181,7 @@ class Joiner(nn.Module):
         #x = self.fc2(x)
 
 
-        return [x, sattn, pattn, inputs, x0]
+        return [x, sattn, pattn]
 
 
 def create_mask(batch_size, f_map_h, f_map_w):

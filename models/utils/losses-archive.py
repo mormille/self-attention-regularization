@@ -15,7 +15,7 @@ import numpy as np
 from models.encoder import EncoderModule
 from models.backbone import Backbone, NoBackbone
 
-__all__ = ['Attention_penalty_factor', 'Curating_of_attention_loss', 'GeneratorLoss', 'CriticLoss','GanLossWrapper']
+__all__ = ['Attention_penalty_factor', 'Curating_of_attention_loss', 'Generator_loss', 'CriticLoss','Generator_loss3','CriticLoss2','GeneratorLossWrapper','CriticLossWrapper']
 
 class Attention_penalty_factor(nn.Module):
     def __init__(self, ):
@@ -150,53 +150,112 @@ class Curating_of_attention_loss(nn.Module):
 
         return Latt
 
+class Generator_loss(nn.Module):
+    def __init__(self, beta=0.00005, gamma=0.005,sigma=1):
+        super().__init__()
+        self.beta = beta
+        self.gamma = gamma
+        self.sigma = sigma
+
+    def forward(self, pattn, noised, original_image, model_loss):
+        #Computing the Attention Loss
+        LCA = Curating_of_attention_loss()
+        Latt = LCA(pattn)
+
+        MSE = nn.MSELoss()
+        Lrec = MSE(noised,original_image)
+
+        Lg = self.beta*Latt - self.gamma*model_loss + self.sigma*Lrec
+
+        return Lg
+    
+class Generator_loss2(nn.Module):
+    def __init__(self, beta=0.00005, gamma=0.005,sigma=1):
+        super().__init__()
+        self.beta = beta
+        self.gamma = gamma
+        self.sigma = sigma
+
+    def forward(self, noised, original_image):
+        #Computing the Attention Loss
+        #LCA = Curating_of_attention_loss()
+        #Latt = LCA(pattn)
+
+        MSE = nn.MSELoss()
+        Lrec = MSE(noised,original_image)
+
+        #Lg = self.beta*Latt - self.gamma*model_loss + self.sigma*Lrec
+
+        return Lrec
 
 class CriticLoss(nn.Module):
-    def __init__(self, beta=0.0000005, sigma=1):
+    def __init__(self, beta=1e-7, sigma=1):
         super(CriticLoss, self).__init__()
         self.beta = beta
         self.sigma = sigma
 
     def forward(self, preds, label):
-        #print("Critic Loss")
+
         crossEntropy = nn.CrossEntropyLoss()
         classificationLoss = crossEntropy(preds[0], label)
 
         LCA = Curating_of_attention_loss()
-        Latt = LCA(preds[1])
+        Latt = LCA(preds[2])
         
         Lc = self.sigma*classificationLoss - self.beta*Latt
         
         return Lc
     
-
-#[x, sattn, pattn, inputs, x0]
+    
     
 class GeneratorLoss(nn.Module):
-    def __init__(self, beta=0.0000005, gamma=0.005,sigma=1):
+    def __init__(self, beta=0.00005, gamma=0.005,sigma=1):
         super().__init__()
         self.beta = beta
         self.gamma = gamma
         self.sigma = sigma
 
     def forward(self, output, target):
-        #print("Generator Loss")
+
         LCA = Curating_of_attention_loss()
-        Latt = TensorCategory(self.beta*LCA(output[2]))
+        Latt = LCA(output[2])
 
         crossEntropy = nn.CrossEntropyLoss()
-        model_loss = self.gamma*crossEntropy(output[0],target)
-
+        model_loss = crossEntropy(output[0],target)
+        
         MSE = nn.MSELoss()
-        Lrec = TensorCategory(self.sigma*MSE(output[3],output[4]))
+        Lrec = MSE(output[4],output[3])
 
-        Lg = Lrec + model_loss + Latt
+        Lg = TensorCategory(self.beta*Latt) - TensorCategory(self.gamma*model_loss) + TensorCategory(self.sigma*Lrec)
 
         return Lg
-
     
-class GanLossWrapper(nn.Module):
-    def __init__(self, beta=0.0000005, gamma=0.005,sigma=1):
+    
+class CriticLoss2(nn.Module):
+    def __init__(self, beta=1e-7, sigma=1):
+        super().__init__()
+        self.beta = beta
+        self.sigma = sigma
+
+    def forward(self, realPreds, fakePreds, target):
+
+        crossEntropy = nn.CrossEntropyLoss()
+        realClassLoss = crossEntropy(realPreds[0], target)
+        fakeClassLoss = crossEntropy(fakePreds[0], target)
+        classificationLoss = realClassLoss + fakeClassLoss
+
+        LCA = Curating_of_attention_loss()
+        Latt = LCA(realPreds[2]) + LCA(fakePreds[2])
+        
+        Lc = self.sigma*classificationLoss - self.beta*Latt
+        #print("Model Loss:", Lc)
+        
+        return Lc
+    
+    
+    
+class GanLossWrapper(nn.Module)
+        def __init__(self, beta=0.00005, gamma=0.005,sigma=1):
         super().__init__()
         self.beta = beta
         self.gamma = gamma
@@ -206,18 +265,66 @@ class GanLossWrapper(nn.Module):
         self.criticLoss = CriticLoss(beta=self.beta, sigma=self.sigma)
 
     def forward(self, output, target):
-        #print(len(output))
-        if len(output) == 4:
-            #print("Generator Loss")
+        
+        if self.generator_mode == True:
             loss = self.generatorLoss(output, target)
             
         else:
-            #print("Critic Loss")
             loss = self.criticLoss(output, target)
             
         return loss
         
         
+class GeneratorLossWrapper(nn.Module):
+    def __init__(self, task_num):
+        super(GeneratorLossWrapper, self).__init__()
+        self.task_num = task_num
+        self.log_vars = nn.Parameter(torch.zeros((task_num)))
+
+    def forward(self, output, target):
+
+        LCA = Curating_of_attention_loss()
+        crossEntropy = nn.CrossEntropyLoss()
+        MSE = nn.MSELoss()
+        
+        loss0 = TensorCategory(LCA(output[2]))
+        loss1 = TensorCategory(crossEntropy(output[0],target))
+        loss2 = TensorCategory(MSE(output[4],output[3]))
+
+        precision0 = torch.exp(-self.log_vars[0])
+        loss0 = precision0*loss0 + self.log_vars[0]
+
+        precision1 = torch.exp(-self.log_vars[1])
+        loss1 = precision1*loss1 + self.log_vars[1]
+
+        precision2 = torch.exp(-self.log_vars[2])
+        loss2 = precision2*loss2 + self.log_vars[2]
+        
+        return loss0+loss1+loss2
+
+    
+class CriticLossWrapper(nn.Module):
+    def __init__(self, task_num):
+        super(CriticLossWrapper, self).__init__()
+        self.task_num = task_num
+        self.log_vars = nn.Parameter(torch.zeros((task_num)))
+
+    def forward(self, output, target):
+        
+        LCA = Curating_of_attention_loss()
+        crossEntropy = nn.CrossEntropyLoss()
+        
+        loss0 = LCA(output[2])
+        loss1 = crossEntropy(output[0],target)
+
+        precision0 = torch.exp(-self.log_vars[0])
+        loss0 = precision0*loss0 + self.log_vars[0]
+
+        precision1 = torch.exp(-self.log_vars[1])
+        loss1 = precision1*loss1 + self.log_vars[1]
+        
+        return loss0+loss1
+    
     
 def img_patches(img_t, grid_l):
     #torch.Tensor.unfold(dimension, size, step)

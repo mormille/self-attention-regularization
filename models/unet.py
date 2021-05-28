@@ -100,6 +100,7 @@ class UNet(nn.Module):
 
     def forward(self, x):
         #print("Passing through the Generator")
+        #print("Generator Forward")
         x0 = x
         x1 = self.inc(x)
         x2 = self.down1(x1)
@@ -115,4 +116,4 @@ class UNet(nn.Module):
         #x = noise.reshape(-1, 3*180*180)
         #x = self.fc1(x)
         noised_image = noise + x0
-        return noised_image
+        return [noised_image,x0]

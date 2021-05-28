@@ -12,14 +12,15 @@ from models.utils.losses import *
 from models.utils.metrics import Accuracy
 from models.utils.misc import *
 from models.unet import UNet
+from models.utils.datasets import *
 
 from torchvision import datasets, transforms, models
 import torchvision.transforms as T
 
 
-beta = -1e-6
-gamma = 3e-3
-sigma = 1.2
+beta = 0#-1e-6
+gamma = 0.05
+sigma = 1.0
 
 def Generator_Attention_loss(preds,target,beta=beta): 
 
@@ -58,30 +59,37 @@ torch.distributed.init_process_group(backend='nccl', init_method='env://')
 H = 320
 W= 320
 bs = 5
-epochs = 10
+epochs = 30
 
 seed = 1234
 
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 
-path = untar_data(URLs.IMAGENETTE_320)
 
-transforms = ([*aug_transforms(),Normalize.from_stats([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+transform = T.Compose([
+T.Resize((H,W)),
+T.ToTensor(),
+T.Normalize([0.485, 0.456, 0.406], [0.485, 0.456, 0.406])
+])
+
+path = './data/ImageNetRotation100k/'
+
+transform = ([*aug_transforms(),Normalize.from_stats([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
 
 data = DataBlock(blocks=(ImageBlock, CategoryBlock), 
                  get_items=get_image_files, 
                  splitter=RandomSplitter(),
                  get_y=parent_label,
                  item_tfms=Resize(H,W),
-                 batch_tfms=transforms)
+                 batch_tfms=transform)
 
-dloader = data.dataloaders(path,bs=bs,device='cuda') 
+dloader = data.dataloaders(path,bs=bs) 
 
-generator_loss = GeneratorLossWrapper(3)
-critic_loss = CriticLossWrapper(2)
+generator_loss = Generator_loss3(beta=0, gamma=0.05,sigma=1)
+critic_loss = CriticLoss(beta=0, sigma=1)
 
-gan = GAN(num_encoder_layers = 4, nhead=4, backbone = True, num_classes = 10, bypass=False, hidden_dim=256, batch_size=bs, image_h=H, image_w=W,grid_l=4,penalty_factor="2")
+gan = GAN(num_encoder_layers = 5, nhead=4, backbone = True, num_classes = 4, bypass=False, hidden_dim=256, batch_size=bs, image_h=H, image_w=W,grid_l=4,penalty_factor="2")
 
 #print("Number of Training Images:", len(dld.train)*bs)
 #print("Number of Validation Images:", len(dld.valid)*bs)
@@ -119,4 +127,4 @@ for e in range(epochs):
 model_dir = Path.home()/'Luiz/saved_models'
 #name pattern
 #{dataset}_{loss}_{loss_coeficients}_{epochs}_{backbone}_{model}.pkl
-critic_learn.export(model_dir/'IMAGENETTE_2_-1e6_3e3_1p2_2_Resnet101_GAN.pkl')
+critic_learn.export(model_dir/'AttGAN__rotation_data_100k_epoch_30_beta_0_gamma_0p05_sigma_1.pkl')
