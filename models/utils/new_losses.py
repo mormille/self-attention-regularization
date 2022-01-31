@@ -15,23 +15,31 @@ import numpy as np
 from models.encoder import EncoderModule
 from models.backbone import Backbone, NoBackbone
 
-__all__ = ['Attention_penalty_factor', 'Curating_of_attention_loss', 'GeneratorLoss', 'CriticLoss','GanLossWrapper']
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-class Curating_of_attention_loss(nn.Module):
-    def __init__(self, width=32, height=32, grid_l=2):
+__all__ = ['Curating_of_attention_mask', 'GeneratorLoss', 'CriticLoss','GanLossWrapper','Curating_of_attention_loss',
+           'CriticValidationLoss','SingleLabelCriticLoss']
+
+
+class Curating_of_attention_mask(nn.Module):
+    def __init__(self, patch_size=16, width=320, height=320, map_width=20, map_height=20, grid_l=1, pf="1"):
         super().__init__()
         self.grid_l = grid_l
         self.width = width
         self.height = height
-        self.grids_list = self.grids_list(self.width, self.height, self.grid_l)
-        self.grids_matrix = self.grids_matrix(self.width, self.height, self.grid_l)
+        self.patch_size = patch_size
+        self.map_width = map_width
+        self.map_height = map_height
+        self.pf = pf
+        self.grids_list = self.grids_list(self.width, self.height, self.patch_size)
+        self.grids_matrix = self.grids_matrix(self.map_width, self.map_height, self.grid_l)
         
         
-    def grids_list(self, width, height, grid_l): #COMPUTED ONCE BEFORE TRAINING
+    def grids_list(self, width, height, patch_size): #COMPUTED ONCE BEFORE TRAINING
         w = width
         h = height
-        qt_hor_grids = w//grid_l
-        qt_ver_grids = h//grid_l
+        qt_hor_grids = w//patch_size
+        qt_ver_grids = h//patch_size
         qtd_grids = qt_hor_grids*qt_ver_grids
         c = 0
         grids_list = []
@@ -46,10 +54,10 @@ class Curating_of_attention_loss(nn.Module):
         return grids_list
         
         
-    def grids_matrix(self, width, height, grid_l):
+    def grids_matrix(self, map_width, map_height, grid_l):
 
-        w = width
-        h = height
+        w = map_width
+        h = map_height
         len_input_seq = h*w
         qt_hor_grids = w//grid_l
         qt_ver_grids = h//grid_l
@@ -72,10 +80,10 @@ class Curating_of_attention_loss(nn.Module):
         return grid_matrix
         
         
-    def img_patches(self, batch, grid_l):
+    def img_patches(self, batch, patch_size):
         #torch.Tensor.unfold(dimension, size, step)
         #slices the images into grid_l*grid_l size patches
-        patches = batch.data.unfold(1, 3, 3).unfold(2, grid_l, grid_l).unfold(3, grid_l, grid_l)
+        patches = batch.data.unfold(1, 3, 3).unfold(2, patch_size, patch_size).unfold(3, patch_size, patch_size)
         a, b, c, d, e, f, g = patches.shape
         patches = patches.reshape(a, c, d, e, f, g)
         #print(patches.shape)
@@ -102,7 +110,7 @@ class Curating_of_attention_loss(nn.Module):
             G= torch.cat((G, g), 0)
 
 
-        G = G.div(d * e * f).reshape(a, b, c, d, d)
+        G = G.div(d * e * f).reshape(a, b * c, d, d)
 
         # we 'normalize' the values of the gram matrix
         # by dividing by the number of element in each feature maps.
@@ -120,44 +128,36 @@ class Curating_of_attention_loss(nn.Module):
         #print(bs)
         MSE = nn.MSELoss()
 
+        #Grid = Grid.reshape(Grid.shape[0],Grid.shape[1]*Grid.shape[2],Grid.shape[3],Grid.shape[4])
+        gmg_shape = Grid.shape
+        #print(gmg_shape)
+        
+        
         mse_grid = []
-        for k in range(bs):
+        for k in range(gmg_shape[0]):
             dist_grid = []
-            for g in range(len(self.grids_list)):
+            for g in range(gmg_shape[1]):
                 dist_pair_list = []
-                for n in range(len(self.grids_list)):
-                    dist_pair_list.append(MSE(Grid[k][self.grids_list[g][0]][self.grids_list[g][1]], Grid[k][self.grids_list[n][0]][self.grids_list[n][1]]))
+                for n in range(gmg_shape[1]):
+                    dist_pair_list.append(MSE(Grid[k][g], Grid[k][n]))
                 dist_grid.append(dist_pair_list)
             mse_grid.append(dist_grid)
 
-        dist_matrix = torch.tensor(mse_grid)
-        #dist_matrix = torch.tensor(np.array(mse_grid))
-
+        dist_matrix = torch.tensor(np.array(mse_grid))
         for i in range(bs):
-            dist_matrix[i] = dist_matrix[i].view(dist_matrix[i].size(0), -1)
-            dist_matrix[i] -= dist_matrix[i].min(1, keepdim=True)[0]
-            dist_matrix[i] /= dist_matrix[i].max(1, keepdim=True)[0]
-            dist_matrix[i] = dist_matrix[i].view(1, len(self.grids_list), len(self.grids_list))
+            dist_matrix[i] -= dist_matrix[i].min()
+            dist_matrix[i] /= dist_matrix[i].max()
 
         return dist_matrix
 
 
-    def penalty_factor(self, dist_matrix, penalty_factor="1", alpha=1):
-        if penalty_factor == "1" or penalty_factor =="distraction":
-            pf_matrix = ((dist_matrix+1))**alpha
-            return pf_matrix
-        if penalty_factor == "2" or penalty_factor =="misdirection":
-            pf_matrix = alpha*((torch.max(dist_matrix)//2)-dist_matrix+0.1)**3
-            return pf_matrix
-
-
-    def penalty_matrix(self, width, height, grid_matrix, dist_matrix, grid_l):
+    def penalty_matrix(self, map_width, map_height, grid_matrix, dist_matrix, grid_l, pf): #unused due to lack of performance
         bs,_,_ = dist_matrix.shape
         pep = []
         for s in range(bs):
-            pf_matrix = self.penalty_factor(dist_matrix[s], penalty_factor="1", alpha=1)
-            w = width
-            h = height
+            pf_matrix = self.penalty_factor(dist_matrix[s], penalty_factor=pf, alpha=1)
+            w = map_width
+            h = map_height
 
             qt_hor_grids = w//grid_l
             qt_ver_grids = h//grid_l
@@ -200,57 +200,111 @@ class Curating_of_attention_loss(nn.Module):
 
         return penalty_encoding_pattern
         
-    def forward(self, batch, sattn):
+    def forward(self, batch):
         
-        dist_matrix = self.gram_dist_matrix(batch, self.grid_l)
-        penalty_mask = self.penalty_matrix(self.width, self.height, self.grids_matrix, dist_matrix, self.grid_l)
+        batch = batch.unsqueeze(0)
         
-        pattn = sattn*penalty_mask.cuda()
+        dist_matrix = self.gram_dist_matrix(batch, self.patch_size)
         
-        Latt = torch.sum(pattn)
-        
-        return Latt
+        return dist_matrix
     
 
+class Curating_of_attention_loss(nn.Module):
+    def __init__(self, bias=0.0, distortion=1):
+        super().__init__()
+ 
+        self.bias = bias
+        self.d = distortion
+
+    def penalty_factor(self, dist_matrix, alpha=1):
+
+        pf_matrix = dist_matrix+self.bias
+        return pf_matrix
+
+    def forward(self, sattn, pattn):
+        #Computing the Attention Loss
+        
+        pattn = self.penalty_factor(pattn)
+
+        att_loss = sattn*pattn # (output2*label) (64x64 * 64x64)
+        Latt = TensorCategory(torch.sum(att_loss)) # ecalar number
+
+        return Latt
+    
+    
 class CriticLoss(nn.Module):
-    def __init__(self, beta=0.0000005, sigma=1):
+    def __init__(self, layer=None, bias=0.0, beta=0.0002, sigma=1):
         super(CriticLoss, self).__init__()
+        self.layer = layer
         self.beta = beta
         self.sigma = sigma
+        self.crossEntropy = nn.CrossEntropyLoss()
+        self.LCA = Curating_of_attention_loss(bias=bias)
+
+    def forward(self, preds, label):
+
+        classificationLoss = self.crossEntropy(preds[0],label)
+        #print(classificationLoss)
+        if self.layer != None:
+            #print(self.layer)
+            Latt = self.LCA(preds[1][self.layer], preds[3])#.item()
+        else:
+            Latt=0.0
+        #print(self.beta*Latt)
+        Lc = self.sigma*classificationLoss + self.beta*Latt
+        #print(Lc)
+        return Lc
+    
+class CriticValidationLoss(nn.Module):
+    def __init__(self):
+        super(CriticValidationLoss, self).__init__()
 
     def forward(self, preds, label):
         #print("Critic Loss")
-        #[x, sattn, pattn, inputs, x0]
         crossEntropy = nn.CrossEntropyLoss()
-        classificationLoss = crossEntropy(preds[0], label)
+        classificationLoss = crossEntropy(preds[0], label[1])      
+        
+        return classificationLoss
+    
+class SingleLabelCriticLoss(nn.Module):
+    def __init__(self):
+        super(SingleLabelCriticLoss, self).__init__()
+        self.crossEntropy = nn.CrossEntropyLoss()
 
-        LCA = Curating_of_attention_loss()
-        Latt = LCA(preds[3],preds[2])
+    def forward(self, preds, label):
+        #print("Critic Loss")
+        #crossEntropy = nn.CrossEntropyLoss()
+        classificationLoss = self.crossEntropy(preds[0], label)
         
-        Lc = self.sigma*classificationLoss - self.beta*Latt
-        
-        return Lc
+        return classificationLoss
     
     
 class GeneratorLoss(nn.Module):
-    def __init__(self, beta=0.0000005, gamma=0.005,sigma=1):
+    def __init__(self,  beta=0.005, sigma=1, gamma=0.0005):
         super().__init__()
         self.beta = beta
         self.gamma = gamma
         self.sigma = sigma
+        self.crossEntropy = nn.CrossEntropyLoss()
+        self.LCA = Curating_of_attention_loss(pf="2", pool=2, grid_l=16, img_size=256)
+        self.MSE = nn.MSELoss()
+        
 
-    def forward(self, output, target):
+    def forward(self, output, image, target): #fake_pred, output, target
         #print("Generator Loss")
-        LCA = Curating_of_attention_loss()
-        Latt = TensorCategory(-self.beta*LCA(output[2]))
+        
+        #crossEntropy = nn.CrossEntropyLoss()
+        #passing sigma to both CLoss and ALoss to help produce images that hinder the attention maps
+        
+        classificationLoss = self.sigma*(self.crossEntropy(output[0],target))
 
-        crossEntropy = nn.CrossEntropyLoss()
-        model_loss = self.gamma*crossEntropy(output[0],target)
+        #LCA = Curating_of_attention_loss()
+        Latt = self.beta*(self.LCA(output[1], output[3]).item())
+        
+        #MSE = nn.MSELoss()
+        Lrec = self.MSE(image[0],image[1]).item()
 
-        MSE = nn.MSELoss()
-        Lrec = TensorCategory(self.sigma*MSE(output[3],output[4]))
-
-        Lg = Lrec + model_loss + Latt
+        Lg = Lrec - self.gamma*(classificationLoss+Latt)
 
         return Lg
 

@@ -143,8 +143,8 @@ class TransformerEncoderLayer(nn.Module):
                     src_key_padding_mask: Optional[Tensor] = None,
                     pos: Optional[Tensor] = None):
         src2 = self.norm1(src)
-        q = k = self.with_pos_embed(src2, pos)
-        src2 = self.self_attn(q, k, value=src2, attn_mask=src_mask,
+        q = k = v = self.with_pos_embed(src2, pos)
+        src2 = self.self_attn(q, k, value=v, attn_mask=src_mask,
                               key_padding_mask=src_key_padding_mask)
         
         sattn = src2[1]

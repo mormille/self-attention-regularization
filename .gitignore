@@ -1,6 +1,10 @@
 Tests.ipynb
 data/
-test/
+ample_images/
+models/finetuned/
+models/pretrained/
+models/timm/
+saved_models/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

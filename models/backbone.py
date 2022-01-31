@@ -13,12 +13,12 @@ from models.positional_encoding import PositionalEncodingSin
 __all__ = ['Backbone', 'EmbeddingNetwork', 'NoBackbone']
 
 class Backbone(nn.Module):
-    def __init__(self, hidden_dim=256):
+    def __init__(self, hidden_dim=256, pretrained=True):
         super().__init__()
         
         self.hidden_dim = hidden_dim
         # create ResNet-101 backbone
-        self.backbone = resnet101()
+        self.backbone = resnet101(pretrained=pretrained)
         #del self.backbone.layer3
         del self.backbone.layer4
         del self.backbone.avgpool

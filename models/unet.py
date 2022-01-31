@@ -97,6 +97,10 @@ class UNet(nn.Module):
         self.up4 = Up(128, 64, bilinear)
         self.outc = OutConv(64, n_classes)
         #self.fc1 = nn.Linear(n_classes*180*180, 10)
+        
+    def paramsToUpdate(self, rg):
+        for p in self.parameters(): 
+            p.requires_grad_(rg)
 
     def forward(self, x):
         #print("Passing through the Generator")
@@ -116,4 +120,4 @@ class UNet(nn.Module):
         #x = noise.reshape(-1, 3*180*180)
         #x = self.fc1(x)
         noised_image = noise + x0
-        return [noised_image,x0]
+        return noised_image, x0
