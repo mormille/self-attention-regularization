@@ -46,12 +46,11 @@ W= 256
 bs =50
 epochs = 10
 lr = 1e-4
-lr_str = '1e-4'
 
 #HYPERPARAMETERS
 reg_layer = 2
 grid_l = 16
-nclass = 10
+nclass = 4
 alpha = 4
 beta = 0.5 
 gamma = 0.1
