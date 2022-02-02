@@ -49,12 +49,12 @@ epochs = 10
 lr = 1e-4
 
 #HYPERPARAMETERS
-reg_layer = 2
+reg_layers = [0,1,2,3,4,5]
 grid_l = 16
 gm_l = 16
 nclass = 10
 bias = -0.17 
-lambda_ = 0.01
+lambdas = [0.002,0.002,0.002,0.002,0.002,0.002]
 
 #SAVE FILE DETAILS
 model_dir = Path.home()/'Luiz/saved_models/paper'
@@ -101,7 +101,7 @@ def new_empty():
 dloader.new_empty = new_empty
 
 #Defining the Loss Function
-total_loss = ARViT_Loss(layer= reg_layer, bias=bias, lambda_=lambda_)
+total_loss = ARViT_MultiLayer_Loss(layers= reg_layers, bias=bias, lambdas=lambdas)
 #critic_loss = CriticValidationLoss()
 
 plateau = ReduceLROnPlateau(monitor='valid_loss', patience=2)

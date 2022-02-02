@@ -27,8 +27,8 @@ from torch import nn
 import argparse
 
 from ARViT2D.ARViT2D import ARViT2D
-from ARViT2D.utils.distance_loss import ARViT2D_Loss
-from ARViT2D.utils.metrics import *
+from losses.distance_loss import ARViT2D_Loss
+from losses.metrics import *
 
 from torch.nn.parallel import DistributedDataParallel
 
@@ -50,11 +50,11 @@ lr = 1e-4
 #HYPERPARAMETERS
 reg_layer = 2
 grid_l = 16
-nclass = 4
+nclass = 10
 alpha = 4
 beta = 0.5 
 gamma = 0.1
-sigma = 0.01
+lambda_ = 0.01
 
 #SAVE FILE DETAILS
 model_dir = Path.home()/'Luiz/saved_models/AROB'
@@ -67,21 +67,34 @@ torch.cuda.manual_seed(seed)
 
 #Loading the DataSets
 
-path = Path.home()/'Luiz/gan_attention/data/Custom_ImageNet'
+# path = Path.home()/'Luiz/gan_attention/data/Custom_ImageNet'
+
+# transform = ([*aug_transforms(),Normalize.from_stats([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+
+
+# dblock = DataBlock(blocks    = (ImageBlock, CategoryBlock),
+#                    n_inp=1,
+#                    get_items = get_image_files,
+#                    get_y     = parent_label,                  
+#                    splitter  = RandomSplitter(),
+#                    item_tfms = Resize(256),
+#                    batch_tfms= transform
+#                   )
+
+# dloader = dblock.dataloaders(path/"images", bs=bs)
+
+path = untar_data(URLs.IMAGENETTE)
 
 transform = ([*aug_transforms(),Normalize.from_stats([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
 
+dblock = DataBlock(blocks=(ImageBlock, CategoryBlock), 
+                 get_items=get_image_files, 
+                 splitter=RandomSplitter(),
+                 get_y=parent_label,
+                 item_tfms=Resize(H,W),
+                 batch_tfms=transform)
 
-dblock = DataBlock(blocks    = (ImageBlock, CategoryBlock),
-                   n_inp=1,
-                   get_items = get_image_files,
-                   get_y     = parent_label,                  
-                   splitter  = RandomSplitter(),
-                   item_tfms = Resize(256),
-                   batch_tfms= transform
-                  )
-
-dloader = dblock.dataloaders(path/"images", bs=bs)
+dloader = dblock.dataloaders(path,bs=bs)
 
 
 def new_empty():  
@@ -89,7 +102,7 @@ def new_empty():
 dloader.new_empty = new_empty
 
 #Defining the Loss Function
-critic_loss = ARViT2D_Loss(layer=reg_layer, sigma=sigma)
+total_loss = ARViT2D_Loss(layer=reg_layer, lambda_=lambda_)
 
 #plateau = ReduceLROnPlateau(monitor='valid_loss', patience=2)
 save_best = SaveModelCallback(monitor='valid_loss', fname=best_name)
@@ -100,7 +113,7 @@ model = ARViT2D(num_encoder_layers = 6, nhead=12, num_classes = nclass, batch_si
                 penalty_factor="2", alpha=alpha, beta=beta, gamma=gamma)
 
 #Wraping the Learner
-learner = Learner(dloader, model, loss_func=critic_loss, metrics=[Accuracy,DL1,DL2,DL3,DL4,DL5,DL6,Cross_Entropy], cbs=[save_best]).to_distributed(args.local_rank)
+learner = Learner(dloader, model, loss_func=total_loss, metrics=[Accuracy,DL1,DL2,DL3,DL4,DL5,DL6,Cross_Entropy], cbs=[save_best]).to_distributed(args.local_rank)
 
 #Fitting the model
 learner.fit_one_cycle(epochs, lr)

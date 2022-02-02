@@ -13,12 +13,10 @@ from scipy.spatial import distance
 import numpy as np
 
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-__all__ = ['ARViT2D_Loss', 'Distance_loss','Distance_Matrix2D']
+__all__ = ['Penalty_Matrix']
 
 
-class Distance_Matrix2D(nn.Module):
+class Penalty_Matrix(nn.Module):
     def __init__(self, bs, width=256, height=256, grid_l=16, penalty_factor="2", alpha=4, beta=0.5, gamma=0.1):
         super().__init__()
  
@@ -53,7 +51,7 @@ class Distance_Matrix2D(nn.Module):
 
         return dist_matrix
 
-    def penalty_weights(self, dist_matrix, penalty_factor="2", alpha=4, beta=500, gamma=0.1):
+    def penalty_weights(self, dist_matrix, penalty_factor="2", alpha=4, beta=0.5, gamma=0.1):
         if penalty_factor == "1":
             high = (dist_matrix.max(0, keepdim=True)[0][0]+1).reshape(256,1)
             pf_matrix = torch.div((dist_matrix+gamma),high)
@@ -73,43 +71,3 @@ class Distance_Matrix2D(nn.Module):
         pm = torch.stack(stack, dim=0)
         return pm
 
-class Distance_loss(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, pm, sattn):
-        #Computing the Distance Loss
-        
-        #if pm.shape[0]>=sattn.shape[0]:
-        #    pm = pm[:sattn.shape[0]] 
-        
-        #loss = self.pm*sattn
-        dist_loss = torch.sum(pm*sattn)#.float().mean()
-        dist_loss[dist_loss <= 1] = 1
-
-        Ld = TensorCategory(torch.log(dist_loss)) # ecalar number
-
-        return Ld
-    
-    
-class ARViT2D_Loss(nn.Module):
-    def __init__(self,layer=None, sigma=0.01):
-        super(ARViT2D_Loss, self).__init__()
-        self.layer = layer
-        self.sigma = sigma
-        self.crossEntropy = nn.CrossEntropyLoss()
-        self.Ld = Distance_loss()
-
-    def forward(self, preds, label):
-
-        classificationLoss = self.crossEntropy(preds[0],label)
-        #print(classificationLoss)
-        if self.layer != None:
-            #print(self.layer)
-            LD = self.Ld(preds[3],preds[1][self.layer])#.item()
-        else:
-            LD=0.0
-        #print(self.beta*Latt)
-        Lc = classificationLoss + self.sigma*LD
-        #print(Lc)
-        return Lc

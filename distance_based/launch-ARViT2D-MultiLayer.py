@@ -7,7 +7,6 @@ from fastai.metrics import *
 from fastai.callback.tracker import SaveModelCallback, ReduceLROnPlateau
 from fastai import torch_core
 
-
 from fastprogress import fastprogress
 from torchvision import datasets, transforms, models
 import torch.optim as optim
@@ -25,12 +24,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn.functional as F
 from torch import nn
-
 import argparse
 
-from ARViT.ARViT import ARViT
+from ARViT2D.ARViT2D import ARViT2D
+from losses.distance_loss import *
 from losses.metrics import *
-from losses.attention_loss import *
+
 from torch.nn.parallel import DistributedDataParallel
 
 parser = argparse.ArgumentParser()
@@ -49,17 +48,18 @@ epochs = 10
 lr = 1e-4
 
 #HYPERPARAMETERS
-reg_layer = 2
+reg_layers = [0,1,2,3,4,5]
 grid_l = 16
-gm_l = 16
 nclass = 10
-bias = -0.17 
-lambda_ = 0.01
+alpha = 4
+beta = 0.5 
+gamma = 0.1
+lambdas = [0.002,0.002,0.002,0.002,0.002,0.002]
 
 #SAVE FILE DETAILS
-model_dir = Path.home()/'Luiz/saved_models/paper'
-file_name = "ARViT-test.pkl"
-best_name = model_dir/'best/ARViT-test'
+model_dir = Path.home()/'Luiz/saved_models/AROB'
+file_name = "ARViT2D-test.pkl"
+best_name = model_dir/'best/ARViT2D-test'
 
 seed = 1234
 torch.manual_seed(seed)
@@ -96,25 +96,26 @@ dblock = DataBlock(blocks=(ImageBlock, CategoryBlock),
 
 dloader = dblock.dataloaders(path,bs=bs)
 
+
 def new_empty():  
     return ()
 dloader.new_empty = new_empty
 
 #Defining the Loss Function
-total_loss = ARViT_Loss(layer= reg_layer, bias=bias, lambda_=lambda_)
-#critic_loss = CriticValidationLoss()
+total_loss = ARViT2D_MultiLayer_Loss(layers=reg_layers, lambdas=lambdas)
 
-plateau = ReduceLROnPlateau(monitor='valid_loss', patience=2)
+#plateau = ReduceLROnPlateau(monitor='valid_loss', patience=2)
 save_best = SaveModelCallback(monitor='valid_loss', fname=best_name)
 
 #Building the model
-model = ARViT(num_encoder_layers = 6, nhead=8, num_classes = nclass, batch_size=bs, hidden_dim=512, image_h=H, image_w=W, grid_l=grid_l, gm_patch = gm_l)
+model = ARViT2D(num_encoder_layers = 6, nhead=12, num_classes = nclass, batch_size=bs, 
+                hidden_dim=516, image_h=H, image_w=W, grid_l=grid_l, 
+                penalty_factor="2", alpha=alpha, beta=beta, gamma=gamma)
 
 #Wraping the Learner
-learner = Learner(dloader, model, loss_func=total_loss, metrics=[Accuracy,AL1,AL2,AL3,AL4,AL5,AL6,Cross_Entropy], cbs=[save_best, plateau]).to_distributed(args.local_rank)
+learner = Learner(dloader, model, loss_func=total_loss, metrics=[Accuracy,DL1,DL2,DL3,DL4,DL5,DL6,Cross_Entropy], cbs=[save_best]).to_distributed(args.local_rank)
 
-#with learner.distrib_ctx():
+#Fitting the model
 learner.fit_one_cycle(epochs, lr)
 
-model_dir = Path.home()/'Luiz/saved_models'
 learner.export(model_dir/file_name)

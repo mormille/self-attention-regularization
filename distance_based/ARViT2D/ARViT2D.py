@@ -13,7 +13,7 @@ from ARViT2D.layers.encoder import EncoderModule
 
 from ARViT2D.utils.positional_encoding import PositionalEncodingSin
 from ARViT2D.layers.layers import *
-from ARViT2D.utils.distance_loss import Distance_Matrix2D
+from ARViT2D.utils.penalty_matrix import Penalty_Matrix
 
 # from fastai.vision.all import *
 
@@ -38,7 +38,7 @@ class ARViT2D(nn.Module):
         self.f_map_h = image_h//grid_l
         self.f_map_w = image_w//grid_l
         
-        self.pm = nn.Parameter(Distance_Matrix2D(bs=batch_size, width=image_w, height=image_h, grid_l=grid_l, penalty_factor=penalty_factor, alpha=alpha, beta=beta, gamma=gamma).pm,requires_grad=False)
+        self.pm = nn.Parameter(Penalty_Matrix(bs=batch_size, width=image_w, height=image_h, grid_l=grid_l, penalty_factor=penalty_factor, alpha=alpha, beta=beta, gamma=gamma).pm,requires_grad=False)
         
         self.backbone = PatchEmbed(img_size=image_h, patch_size=grid_l, in_chans=in_chans, embed_dim=hidden_dim)
         self.num_patches = self.backbone.num_patches

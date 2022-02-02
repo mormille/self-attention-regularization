@@ -9,24 +9,23 @@ from torch import nn, Tensor
 from scipy.spatial import distance
 import numpy as np
 
-from ARViT2D.utils.distance_loss import Distance_loss
+from losses.attention_loss import *
 
 from fastai.vision.all import *
 from fastai.distributed import *
 from fastai.metrics import *
 from fastai.callback.tracker import SaveModelCallback
 
-__all__ = ['Accuracy','DL1','DL2','DL3','DL4','DL5','DL6','Cross_Entropy']
+__all__ = ['Accuracy','AL1','AL2','AL3','AL4','AL5','AL6','Cross_Entropy']
 
 
 ######################################################################
 #Parameters
-beta_metric = 0.01
-gamma_metric = 0.0005
-sigma_metric = 0.01
+bias = -0.17
+lambda_metric = 0.01
 
 c_entropy = nn.CrossEntropyLoss() 
-LD = Distance_loss()
+LCA2 = Attention_loss(bias=bias)
 MSE = nn.MSELoss()
 
 ######################################################################
@@ -35,56 +34,59 @@ def Accuracy(preds,target):
     _, pred = torch.max(preds[0], 1)
 
     return (pred == target).float().mean()
-
+   
 ######################################################################
 
-def DL1(preds,target):
+def AL1(preds,target):
 
-    Latt = LD(preds[3], preds[1][0])
+    Latt = LCA2(preds[1][0], preds[3])
     
-    return (sigma_metric*Latt).float().mean()
+    return (lambda_metric*Latt).float().mean()
 
 ######################################################################
 
-def DL2(preds,target):
+def AL2(preds,target):
 
-    Latt = LD(preds[3], preds[1][1])
+    Latt = LCA2(preds[1][1], preds[3])
     
-    return (sigma_metric*Latt).float().mean()
+    return (lambda_metric*Latt).float().mean()
 
 ######################################################################
 
-def DL3(preds,target):
+def AL3(preds,target):
 
-    Latt = LD(preds[3], preds[1][2])
+    Latt = LCA2(preds[1][2], preds[3])
     
-    return (sigma_metric*Latt).float().mean()
+    return (lambda_metric*Latt).float().mean()
 
 ######################################################################
 
-def DL4(preds,target):
+def AL4(preds,target):
 
-    Latt = LD(preds[3], preds[1][3])
+    Latt = LCA2(preds[1][3], preds[3])
     
-    return (sigma_metric*Latt).float().mean()
+    return (lambda_metric*Latt).float().mean()
 
 ######################################################################
 
-def DL5(preds,target):
+def AL5(preds,target):
 
-    Latt = LD(preds[3], preds[1][4])
+    Latt = LCA2(preds[1][4], preds[3])
     
-    return (sigma_metric*Latt).float().mean()
+    return (lambda_metric*Latt).float().mean()
 
 ######################################################################
 
-def DL6(preds,target):
+def AL6(preds,target):
 
-    Latt = LD(preds[3], preds[1][5])
+    Latt = LCA2(preds[1][5], preds[3])
     
-    return (sigma_metric*Latt).float().mean()
+    return (lambda_metric*Latt).float().mean()
 
 ######################################################################
+
+######################################################################
+
 
 def Cross_Entropy(preds,target):
 
@@ -93,3 +95,4 @@ def Cross_Entropy(preds,target):
     return (Loss).float().mean()
 
 ######################################################################
+

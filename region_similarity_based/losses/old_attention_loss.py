@@ -12,19 +12,17 @@ from torch import nn, Tensor
 from scipy.spatial import distance
 import numpy as np
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-__all__ = ['CriticLoss','Curating_of_attention_loss']
+__all__ = ['ARViT_Loss','Attention_loss']
 
 
-class Curating_of_attention_loss(nn.Module):
-    def __init__(self, bias=0.0, distortion=1):
+class Attention_loss(nn.Module):
+    def __init__(self, bias=0.01):
         super().__init__()
  
         self.bias = bias
-        self.d = distortion
 
-    def penalty_factor(self, dist_matrix, alpha=1):
+    def penalty_factor(self, dist_matrix):
 
         pf_matrix = dist_matrix+self.bias
         return pf_matrix
@@ -40,14 +38,13 @@ class Curating_of_attention_loss(nn.Module):
         return Latt
     
     
-class CriticLoss(nn.Module):
-    def __init__(self, layer=None, bias=0.0, beta=0.0002, sigma=1):
-        super(CriticLoss, self).__init__()
+class ARViT_Loss(nn.Module):
+    def __init__(self, layer=None, bias=0.01, lambda_=0.0002):
+        super(ARViT_Loss, self).__init__()
         self.layer = layer
-        self.beta = beta
-        self.sigma = sigma
+        self.lambda_ = lambda_
         self.crossEntropy = nn.CrossEntropyLoss()
-        self.LCA = Curating_of_attention_loss(bias=bias)
+        self.LCA = Attention_loss(bias=bias)
 
     def forward(self, preds, label):
 
@@ -59,7 +56,7 @@ class CriticLoss(nn.Module):
         else:
             Latt=0.0
         #print(self.beta*Latt)
-        Lc = self.sigma*classificationLoss + self.beta*Latt
+        Lc = classificationLoss + self.lambda_*Latt
         #print(Lc)
         return Lc
     
